@@ -4,5 +4,6 @@ import "time"
 
 const (
 	ParseMode = "Markdown"
-	TimeDelta = 5 * time.Minute
+	//TimeDelta = 5 * time.Minute
+	TimeDelta = time.Minute
 )

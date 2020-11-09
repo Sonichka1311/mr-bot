@@ -2,15 +2,13 @@ package basics
 
 import (
 	"context"
-	"encoding/json"
 	tb "gopkg.in/tucnak/telebot.v2"
-	"io/ioutil"
 	"log"
 	"mr-bot/pkg/constants"
-	"mr-bot/pkg/datastruct"
 	"mr-bot/pkg/helpers"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -42,27 +40,40 @@ func (b *Bot) StartBot(ctx context.Context) error {
 }
 
 func (b *Bot) CheckMR(msg *tb.Message) {
-	log.Printf("Start with user %s in chat %s\n", msg.Sender.Username, msg.Chat.Title)
 	token := os.Getenv("token")
 	projectId := os.Getenv("project_id")
-	for now := range time.Tick(constants.TimeDelta) {
-		resp, err := http.DefaultClient.Get(helpers.CreateGetMRsRequest(projectId, token, now))
-		if err != nil {
-			log.Printf("Err: %s\n", err.Error())
-			continue
-		} else if resp == nil {
-			log.Printf("Body is nil")
-			continue
-		}
-		jsonResp, _ := ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		var mrs []*datastruct.MR
-		json.Unmarshal(jsonResp, &mrs)
+	log.Printf("Start with user %s in chat %s for project %s\n", msg.Sender.Username, msg.Chat.Title, projectId)
+	for range time.Tick(constants.TimeDelta) {
+		mrs := helpers.GetMRsFromResponse(http.DefaultClient.Get(helpers.CreateGetMRsRequest(projectId, token)))
+		log.Printf("Have %d mrs\n", len(mrs))
 		for _, mr := range mrs {
-			_, err := b.Bot.Send(msg.Chat, helpers.CreateNewMRMessage(mr))
-			if err != nil {
-				log.Printf("Send err: %s\n", err.Error())
+			if _, ok := constants.GitlabToTg[mr.Author.Username]; !ok {
+				log.Printf("Author %s is not in the accepted list\n", mr.Author.Username)
+				continue
+			}
+
+			comments := helpers.GetCommentsFromResponse(
+				http.DefaultClient.Get(helpers.CreateGetCommentsRequest(projectId, token, strconv.Itoa(mr.Iid))),
+			)
+			log.Printf("Have %d comments\n", len(comments))
+
+			if !helpers.IsAssigned(comments) {
+				duty := helpers.GetDuty(constants.GitlabToTg[mr.Author.Username])
+				log.Println("Duty: " + duty)
+
+				_, err := http.DefaultClient.Post(
+					helpers.CreateAddCommentRequest(projectId, token, strconv.Itoa(mr.Iid), constants.TgToGitlab[duty]),
+					"", nil,
+				)
+				if err != nil {
+					log.Printf("Can't create comment: %s\n", err.Error())
+					continue
+				}
+
+				_, err = b.Bot.Send(msg.Chat, helpers.CreateNewMRMessage(mr, duty))
+				if err != nil {
+					log.Printf("Send err: %s\n", err.Error())
+				}
 			}
 		}
 	}

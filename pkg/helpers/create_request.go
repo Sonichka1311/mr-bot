@@ -2,14 +2,28 @@ package helpers
 
 import (
 	"fmt"
-	"mr-bot/pkg/constants"
-	"time"
+	"net/url"
 )
 
-func CreateGetMRsRequest(projectId, token string, now time.Time) string {
-	now = now.Add(-constants.TimeDelta)
+const GitlabAPI = "https://gitlab.com/api/v4/projects/"
+
+func CreateGetMRsRequest(projectId, token string) string {
 	return fmt.Sprintf(
-		"https://gitlab.com/api/v4/projects/%s/merge_requests?private_token=%s&view=simple&created_after=%s",
-		projectId, token, now.Format("2006-1-2T15:04:05Z"),
+		"%s%s/merge_requests?private_token=%s&state=opened&wip=no",
+		GitlabAPI, projectId, token,
+	)
+}
+
+func CreateGetCommentsRequest(projectId, token, mrId string) string {
+	return fmt.Sprintf(
+		"%s%s/merge_requests/%s/notes?private_token=%s",
+		GitlabAPI, projectId, mrId, token,
+	)
+}
+
+func CreateAddCommentRequest(projectId, token, mrId, duty string) string {
+	return fmt.Sprintf(
+		"%s%s/merge_requests/%s/notes?private_token=%s&body=%s",
+		GitlabAPI, projectId, mrId, token, url.QueryEscape(fmt.Sprintf("Reviewers: @%s", duty)),
 	)
 }
